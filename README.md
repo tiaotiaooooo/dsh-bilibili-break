@@ -115,6 +115,19 @@ POST /_dsh/bilibili-break/pick-file  弹系统文件选择框：{ title? } -> { 
 - 需要 `koffi`（DSH profile 里本来就有）。探不到时会话里的 `pickable` 能力位为 `false`、路由回 501，**面板会退回成手填路径**，不会留下一个按了没反应的按钮；
 - 目前只实现了 win32。macOS / Linux 会走上面同一条"退回手填"的路。
 
+## 桌面端内嵌升级：真浏览器 `<webview>`
+
+插件最早的形态是 iframe + sandbox——能嵌页面，但 **B站 页面里视频链接是 `target="_blank"`，点视频必然弹新标签页**（跨源 iframe 改不了别人页面的属性）。现在分两端：
+
+| 端 | 嵌入方式 | 点视频 |
+| --- | --- | --- |
+| 桌面端（Electron） | **`<webview>` 真浏览器内核** + 注入锚点改写脚本 | **原地播**（实测视频真播：readyState 4、640×360） |
+| 网页端（普通浏览器） | iframe + sandbox（原样） | 会开新标签页（浏览器没有更好的手段） |
+
+机制：`webviewSupported()` 探测 `Electron UA + webviewTag 权限`（`document.createElement('webview')` 上有没有 `getWebContentsId`），命中就渲染 `<webview>` 并在每次 `dom-ready`（每份新文档）注入脚本，把页面里所有 `target="_blank"` 改成 `_self`，外加 `MutationObserver` 盖住 SPA 动态插的链接。弹窗默认阻断（不给 `allowpopups`），实测 `window.open` 返回 BLOCKED——留着这套组合，网页不跳走、不开窗。
+
+技术验证全部在**独立 Electron 探针**（`tests-archive/electron-webview-probe/`，DSH 同款内核）里用 CDP + 真实鼠标事件跑过，覆盖：能力探测、B站 首页加载、注入、**缩放后坐标点击命中并原地导航**、视频播放、popup 阻断。三条硬规则见下面的坑 #10。
+
 ## 两个半边
 
 | 半边 | 文件 | 职责 |
@@ -122,7 +135,7 @@ POST /_dsh/bilibili-break/pick-file  弹系统文件选择框：{ title? } -> { 
 | host | `index.js` | 观察 durable 的 `turn/start` / `turn/end`；可选地自动开系统浏览器；**启动器路由**与授权判定 |
 | host | `lib/picker.js` | 原生文件选择框的驱动：探测 `koffi`、起子进程、把 abort 转成"关掉对话框" |
 | host | `lib/picker-worker.cjs` | 真正跑 COM 的子进程入口（`IFileOpenDialog`，选文件模式） |
-| client | `lib/client.js` | 询问卡片、摸鱼面板、启动项编辑器（含「浏览…」）、`window.open` 与路由调用 |
+| client | `lib/client.js` | 询问卡片、摸鱼面板（桌面端 `<webview>` / 网页端 iframe）、启动项编辑器（含「浏览…」）、路由调用 |
 
 主要体验在 client 半边，所以两端行为一致；host 那半的"自动开系统浏览器"默认在 profile 补丁里关掉了（见下）。
 
@@ -201,13 +214,13 @@ node --test test/*.test.js
 
 > 必须在**已安装副本**目录下跑：依赖（`@deepseek-ai/schemastery` 等）只在 profile 的 `node_modules` 里，在源码目录跑会 `ERR_MODULE_NOT_FOUND`。
 
-**85 个测试，六层**：
+**89 个测试，六层**：
 
 - `test/plugin.test.js` —— host 侧纯逻辑（配置归一化、开不开的决策、各平台启动命令）、假上下文的调度行为、路由注册（含"没有 webServer 时安静跳过"）。
 - `test/integration.test.js` —— 在**真实 cordis 根**上装载 host 半边，验证 `inject` 依赖门控、`Config` schema 校验、事件派发。
 - `test/launcher.test.js` —— 启动器的纯校验函数与授权判定：请求闸门正反用例（Host 环回/rebind、trustedHosts、cross-site、Origin 一致性、缺头放行——桌面端事故的回归护栏）、`open` 的 scheme 白名单、`exec` 的参数边界、`authorizeExec` 的五条分支（名单命中 / `userChosen` 豁免 / 信任集合 / 开关关闭 / 默认拒绝）、`pathKey` 的归一化。
 - `test/launcher-http.test.js` —— **真实 HTTP** 打安全门。把 `apply` 注册的 handler 挂到真实的 `node:http` 服务器上再用 `fetch` 打过去，`req.headers` 行为与真实部署一致；覆盖跨源头缺失/伪造、token 缺失/错误、恶意目标、`exec` 默认关闭、allowlist 拦截、信任集合的记住与复用、`/pick-file` 的选中/取消/报错三条路径、`fenceProbe` 探针落盘。**伪造 `sec-fetch-site`/`Origin` 的用例用原始 `http.request` 发**——fetch 会剥掉这类"受保护头"。**picker 用测试替身注入**（`__setPickerImpl`）—— 真实实现会弹出模态对话框并一直等，测试会挂死。
-- `test/client.test.js` —— 把客户端 bundle 当浏览器脚本求值：loader 包装契约、`shell.overlay` 注册形状、样式注入；用 `react-dom/server` 真渲染；启动器数据模型（v1→v2 迁移、非法输入收敛、游标折回、BV 解析、`exe` 类型）；以及两条运行位推导的回归用例。
+- `test/client.test.js` —— 把客户端 bundle 当浏览器脚本求值：loader 包装契约、`shell.overlay` 注册形状、样式注入；用 `react-dom/server` 真渲染；启动器数据模型（v1→v2 迁移、非法输入收敛、游标折回、BV 解析、`exe` 类型）；两条运行位推导的回归用例；桌面端 `<webview>` 四件套（能力判定/降级、锚点改写脚本形状、ref 挂载与导航重注入的幂等、异常吞掉）。
 - `test/picker.test.js` —— 文件选择器：`resolveNodeBinary` 的四条分支（非 Electron 用 execPath、`DSH_PICKER_NODE` 覆盖、Electron 从 `$DSH_HOME/dsh-runtimes` 找独立 Node——桌面端 koffi 崩溃修复的核心回归——、找不到时回退）、非 Windows 的明确降级。
 
 ### 在真实浏览器里验收过
@@ -264,6 +277,8 @@ host 半边的自动打开也实测过：在打包运行时里能识别 turn →
 
 9. **纯 Node 测过的原生链路，在 Electron 宿主下可能直接崩。** picker 的整条链（对话框弹出、选中、回传路径）在纯 Node 下全绿，但桌面端 host 跑在 Electron 的 Node 里——koffi 在 `koffi.view()` 处触发 `napi_is_detached_arraybuffer` **SIGABRT**，worker 悄悄死掉，HTTP 只能报 500，UI 表现是"对话框关了但地址没回填"，用户根本看不到 crash 堆栈。定位靠的是隔离复现：把 worker 单独用 `DeepSeek Harness.exe`（`ELECTRON_RUN_AS_NODE=1`）拉起来跑一遍，堆栈立刻指向 `readUtf16`。**教训：宿主进程的 Node 是不是"你以为的那个 Node"，必须显式验证**（`process.versions.electron`），跑宿主子进程的东西不要无条件用 `process.execPath`。另：worker 发完消息立刻退出，父端要在 `close`（而不是 `exit`）上判失败，否则 IPC 消息还没投递就被判成失败。
 
+10. **`<webview>` 一旦 `display: block`，guest 视口高度永久冻结在 150px。** Electron 44 的怪癖：宽度会跟着元素同步（1280 ✓），高度钉死在默认 150 且永不更新——页面只有一条缝高，`elementFromPoint` 全是 null，缩放坐标点击全部落空。保持默认 inline 就正常（800 ✓）。**症状极具迷惑性**：布局里元素明明是 1280×800（`offsetHeight=800`），错的只是 guest 内部的 `window.innerHeight`，从外观看一切正常。这个 bug 的排查绕了十几个弯（profile、partition、dpr、窗口位置、Electron 小版本全试过），最后靠**文件级二分**定罪。附两条方法论教训：① **"注入样式 + reload 再测"是空测**——reload 会把注入的样式冲掉，页面回到原文件状态，测了个寂寞（我因此得出过好几轮假"800"）；② 二分必须**一次只改一个文件变量、每轮重新起进程**。
+
 ## 实现要点
 
 - 运行态读框架给根作用域组件的标准 props（`useSessions`），**完全不需要 host 配合**；只有 `host`/`exe`/`exec` 几类才回 host，走同源路由。
@@ -280,7 +295,8 @@ host 半边的自动打开也实测过：在打包运行时里能识别 turn →
 - 原生文件选择框**只实现了 win32**。macOS / Linux 上「浏览…」会退回手填路径。
 - 网页端能不能弹选择框，取决于**跑 DSH 服务端的那台机器**是不是你面前这台。远程访问时对话框会出现在服务器屏幕上（或根本弹不出来）。
 - `embed` 只对允许 iframe 的站点有效。不允许的（很多站点用 JS 防嵌套）请用 `tab`。
-- **B站 页面里的视频链接是 `target="_blank"`**，所以在 `embed` 里嵌 `www.bilibili.com` 首页/播放页时，点任何视频都会开新标签页——这是 B站 自己写的链接属性，跨源 iframe 里改不了。**想在面板内看视频，`embed` 的目标要填 BV 号或视频链接**，那会走官方播放器地址。
+- **B站 页面里的视频链接是 `target="_blank"`**。桌面端已用 `<webview>` + 锚点改写解决（点视频原地播）；**网页端**仍是 iframe，点视频会开新标签页（跨源 iframe 改不了别人的链接属性）——这是 iframe 的天花板。网页端想原地看视频，`embed` 目标填 BV 号走官方播放器地址。
+- 桌面端的 `<webview>` 依赖 DSH GUI 开 `webviewTag` 权限（DSH 内置浏览器在用，说明开着）。万一没开，`canUseWebview` 探测失败会自动退回 iframe，不会白屏。
 - `localStorage` 按源存，`dsh web` 换端口会看到一份新的空配置。
 - **host 路由默认只认环回 Host**。经局域网 IP / 域名访问 DSH 时，面板的 `host`/`exe`/`exec` 会被 403（`embed`/`tab` 不受影响，它们不回 host）；需要就往 `launcherTrustedHosts` 里写 authority。
 - `tab` 类在桌面端（Electron）的行为可能与网页端不同——我在网页端实测过，桌面端没测过；如果你在桌面端点 `tab` 有异常，欢迎反馈。

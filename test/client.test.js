@@ -539,3 +539,71 @@ test('启动器：面板对非 embed 启动项渲染「没有可嵌内容」而�
   )
   assert.equal(html, '<div class="dbb-layer"></div>')
 })
+
+// ── 桌面端内嵌升级：<webview> ──────────────────────────────────────────────────
+
+test('桌面端 webview：能力判定四组合 + 测试环境必须降级到 iframe', () => {
+  const { canUseWebview, webviewFacts } = openBundle().__test
+  assert.equal(canUseWebview({ isElectron: true, webviewElement: true }), true)
+  assert.equal(canUseWebview({ isElectron: true, webviewElement: false }), false, 'webviewTag 权限没开要退回 iframe')
+  assert.equal(canUseWebview({ isElectron: false, webviewElement: true }), false, '普通浏览器（网页端）没有 webview')
+  assert.equal(canUseWebview({}), false)
+  assert.equal(canUseWebview(undefined), false)
+
+  // 本测试进程没有 navigator（SSR 同理）→ 事实全 false → 渲染走 iframe 分支，
+  // 这也是现有 embed 测试能断言出 <iframe> 的原因。
+  const facts = webviewFacts()
+  assert.equal(facts.isElectron, false)
+  assert.equal(facts.webviewElement, false)
+})
+
+test('桌面端 webview：锚点改写脚本把 _blank 改 _self、带幂等 guard 与 MutationObserver', () => {
+  const { ANCHOR_REWRITE_SCRIPT } = openBundle().__test
+  assert.match(ANCHOR_REWRITE_SCRIPT, /if \(a\.target === '_blank'\) a\.target = '_self'/)
+  assert.match(ANCHOR_REWRITE_SCRIPT, /MutationObserver/, 'SPA 动态插入的链接要靠 observer 持续改写')
+  assert.match(ANCHOR_REWRITE_SCRIPT, /__dbbRewrite/, '同文档内必须幂等')
+})
+
+test('桌面端 webview：ref 挂载即注入、每次导航重挂、重复挂载幂等、null 不炸', () => {
+  const { bindWebview } = openBundle().__test
+  const listeners = {}
+  const scripts = []
+  const el = {
+    addEventListener(type, fn) {
+      if (listeners[type] === undefined) listeners[type] = []
+      listeners[type].push(fn)
+    },
+    executeJavaScript(script) {
+      scripts.push(script)
+      return Promise.resolve('ok')
+    },
+  }
+
+  bindWebview(el)
+  assert.equal(scripts.length, 1, '挂载即注入一次（dom-ready 可能已错过）')
+  assert.equal(listeners['dom-ready']?.length, 1, '要监听 dom-ready')
+  assert.equal(listeners['did-navigate']?.length, 1, '要监听 did-navigate')
+
+  // 导航到新文档 → 重注入（每个文档的 MutationObserver 都得重新挂）
+  for (const fn of listeners['did-navigate']) fn()
+  assert.equal(scripts.length, 2)
+
+  // React ref 回调可能重复调用 → 幂等
+  bindWebview(el)
+  assert.equal(scripts.length, 2, '重复挂载不该重复注册监听')
+  assert.equal(listeners['dom-ready'].length, 1)
+
+  // ref 卸载时 React 会传 null
+  assert.doesNotThrow(() => bindWebview(null))
+})
+
+test('桌面端 webview：executeJavaScript 抛错被吞掉（元素未 attach 的时序问题不能崩渲染）', () => {
+  const { bindWebview } = openBundle().__test
+  const el = {
+    addEventListener() {},
+    executeJavaScript() {
+      throw new Error('not attached yet')
+    },
+  }
+  assert.doesNotThrow(() => bindWebview(el))
+})
