@@ -1,0 +1,19 @@
+# dsh-bilibili-break bundle layer: applied automatically when this package is a
+# profile bundle (package.json declares dsh.bundle.patch).
+#
+# `inject` MUST be declared here, on the loader row. A bundle-layer row does not
+# pick up the module's own `export const inject`, so leaving it out leaves the
+# plugin mounted but with `ctx.timeout` throwing
+# `cannot get property "timer" without inject` from inside the event listener.
+# The module keeps its own `inject` export for direct `ctx.plugin()` use (tests),
+# but the row below is what the loader honours. `dsh-base` declares inject the
+# same way for its `headless-runner` row.
+#
+# The profile's own cordis.patch.yml can override `config` by row id — a patch
+# replaces the whole `config` value, so restate every field you want to keep.
+
+- insert:
+    - id: bilibili-break
+      name: dsh-bilibili-break
+      inject:
+        - timer

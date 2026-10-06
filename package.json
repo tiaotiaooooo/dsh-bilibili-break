@@ -1,0 +1,52 @@
+{
+  "name": "dsh-bilibili-break",
+  "version": "0.2.0",
+  "description": "DSH 摸鱼插件：agent 忙过 10 秒后在界面里问一句「AI 还在 coding，放松一下吧？」，确定就开一个内嵌 B站 播放器的摸鱼面板。桌面端与网页端通用。",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "test"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/plugin.test.js test/integration.test.js test/client.test.js test/launcher.test.js"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "bilibili",
+    "break"
+  ],
+  "dependencies": {
+    "@deepseek-ai/schemastery": ">=3.18.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-layout"
+      ]
+    }
+  }
+}
