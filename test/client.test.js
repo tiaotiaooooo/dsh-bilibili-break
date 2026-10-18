@@ -118,7 +118,7 @@ const runningState = (running) => ({
 
 test('客户端 bundle：遵守 loader 包装契约，只 require react', () => {
   const { entry } = loadBundle()
-  assert.equal(entry.id, 'dsh-bilibili-break')
+  assert.equal(entry.id, 'dsh-moyu-break')
   assert.equal(typeof entry.factory, 'function')
 
   const { exports, asked } = callFactory(entry)
@@ -137,11 +137,11 @@ test('客户端 bundle：注册进 shell.overlay，且 id 稳定', () => {
   assert.deepEqual(injected, ['shell.overlay'], '必须等 shell.overlay 的声明')
   assert.equal(registrations.length, 1)
   assert.equal(registrations[0].spec.name, 'shell.overlay')
-  assert.equal(registrations[0].spec.id, 'bilibili-break')
+  assert.equal(registrations[0].spec.id, 'moyu-break')
 
   // 样式必须自己注入并挂上归属标签，卸载时靠它回收。
   assert.equal(styles.length, 1, 'apply 必须注入自己的样式表')
-  assert.equal(styles[0].dataset.plugin, 'dsh-bilibili-break')
+  assert.equal(styles[0].dataset.plugin, 'dsh-moyu-break')
   assert.match(styles[0].textContent, /\.dbb-layer/)
 })
 
@@ -178,7 +178,9 @@ test('客户端 bundle：agent 空闲时不渲染任何东西', () => {
       useSessions: (selector) => selector(runningState(false)),
     }),
   )
-  assert.equal(html, '<div class="dbb-layer"></div>')
+  // idle 断言：允许根里常驻的小窗样式标签（方案 B），但绝不能有交互物。
+  assert.ok(html.startsWith('<div class="dbb-layer">'))
+  assert.ok(!html.includes('dbb-pill') && !html.includes('dbb-card') && !html.includes('dbb-panel'), 'idle 不该渲染胶囊/卡片/面板')
 })
 
 /**
@@ -218,7 +220,8 @@ test('回归：current 已落位时以它为准，不被别的会话带跑', () 
       }),
     }),
   )
-  assert.equal(idle, '<div class="dbb-layer"></div>')
+  assert.ok(idle.startsWith('<div class="dbb-layer">'))
+  assert.ok(!idle.includes('dbb-pill') && !idle.includes('dbb-card') && !idle.includes('dbb-panel'), 'idle 不该渲染胶囊/卡片/面板')
 
   // 当前会话在跑：弹。
   const busy = renderToStaticMarkup(
@@ -241,7 +244,9 @@ test('客户端 bundle：缺少 useSessions 标准 props 也不会崩', () => {
   const html = renderToStaticMarkup(
     React.createElement(registrations[0].Component, {}),
   )
-  assert.equal(html, '<div class="dbb-layer"></div>')
+  // idle 断言：允许根里常驻的小窗样式标签（方案 B），但绝不能有交互物。
+  assert.ok(html.startsWith('<div class="dbb-layer">'))
+  assert.ok(!html.includes('dbb-pill') && !html.includes('dbb-card') && !html.includes('dbb-panel'), 'idle 不该渲染胶囊/卡片/面板')
 })
 
 test('客户端 bundle：BV 解析与播放器地址', () => {
@@ -310,13 +315,13 @@ test('启动器：exe 类型把浏览选中的路径存成单个 target', () => 
 test('启动器：v1 片单迁移成 v2 的第一个启动项', () => {
   const { migrateSettings } = openBundle().__test
   const migrated = migrateSettings({
-    playlist: ['BV1GJ411x7h7', '  ', 'https://www.bilibili.com/video/BV1xx411c7mD'],
+    playlist: ['BV1GJ411x7h7', '  ', 'https://www.example.com/video/BV1xx411c7mD'],
     index: 1,
     askEnabled: false,
   })
   assert.equal(migrated.version, 2)
   assert.equal(migrated.askEnabled, false)
-  assert.deepEqual(migrated.entries[0].targets, ['BV1GJ411x7h7', 'https://www.bilibili.com/video/BV1xx411c7mD'])
+  assert.deepEqual(migrated.entries[0].targets, ['BV1GJ411x7h7', 'https://www.example.com/video/BV1xx411c7mD'])
   // 旧格式没有 askText，应该补上默认文案而不是留空。
   assert.equal(migrated.askText, 'AI 正在工作，来摸一会鱼吧~')
   // 尺寸也要有默认值。
@@ -537,73 +542,150 @@ test('启动器：面板对非 embed 启动项渲染「没有可嵌内容」而�
       useSessions: (selector) => selector(runningState(false)),
     }),
   )
-  assert.equal(html, '<div class="dbb-layer"></div>')
+  // idle 断言：允许根里常驻的小窗样式标签（方案 B），但绝不能有交互物。
+  assert.ok(html.startsWith('<div class="dbb-layer">'))
+  assert.ok(!html.includes('dbb-pill') && !html.includes('dbb-card') && !html.includes('dbb-panel'), 'idle 不该渲染胶囊/卡片/面板')
 })
 
-// ── 桌面端内嵌升级：<webview> ──────────────────────────────────────────────────
+// ── 方案 B：驱动 DSH 内置浏览器 ──────────────────────────────────────────────
 
-test('桌面端 webview：能力判定四组合 + 测试环境必须降级到 iframe', () => {
-  const { canUseWebview, webviewFacts } = openBundle().__test
-  assert.equal(canUseWebview({ isElectron: true, webviewElement: true }), true)
-  assert.equal(canUseWebview({ isElectron: true, webviewElement: false }), false, 'webviewTag 权限没开要退回 iframe')
-  assert.equal(canUseWebview({ isElectron: false, webviewElement: true }), false, '普通浏览器（网页端）没有 webview')
-  assert.equal(canUseWebview({}), false)
-  assert.equal(canUseWebview(undefined), false)
-
-  // 本测试进程没有 navigator（SSR 同理）→ 事实全 false → 渲染走 iframe 分支，
-  // 这也是现有 embed 测试能断言出 <iframe> 的原因。
-  const facts = webviewFacts()
-  assert.equal(facts.isElectron, false)
-  assert.equal(facts.webviewElement, false)
-})
-
-test('桌面端 webview：锚点改写脚本把 _blank 改 _self、带幂等 guard 与 MutationObserver', () => {
-  const { ANCHOR_REWRITE_SCRIPT } = openBundle().__test
-  assert.match(ANCHOR_REWRITE_SCRIPT, /if \(a\.target === '_blank'\) a\.target = '_self'/)
-  assert.match(ANCHOR_REWRITE_SCRIPT, /MutationObserver/, 'SPA 动态插入的链接要靠 observer 持续改写')
-  assert.match(ANCHOR_REWRITE_SCRIPT, /__dbbRewrite/, '同文档内必须幂等')
-})
-
-test('桌面端 webview：ref 挂载即注入、每次导航重挂、重复挂载幂等、null 不炸', () => {
-  const { bindWebview } = openBundle().__test
-  const listeners = {}
-  const scripts = []
-  const el = {
-    addEventListener(type, fn) {
-      if (listeners[type] === undefined) listeners[type] = []
-      listeners[type].push(fn)
+test('方案 B：内置浏览器能力探测正反用例（形状不符一律 false，不许崩）', () => {
+  const { browserTabReady } = openBundle().__test
+  const tabs = { get: (key) => (key === 'browser' ? {} : undefined) }
+  const ctxWith = (right, tabsService) => ({
+    get: (key) => {
+      if (key === 'sidebarRight') return right
+      if (key === 'sidebarRightTabs') return tabsService
+      return undefined
     },
-    executeJavaScript(script) {
-      scripts.push(script)
-      return Promise.resolve('ok')
+  })
+  const openTab = () => {}
+
+  assert.equal(browserTabReady(ctxWith({ openTab }, tabs)), true)
+
+  assert.equal(browserTabReady(ctxWith({ openTab }, { get: () => undefined })), false, 'browser 标签未注册 → 不可用')
+  assert.equal(browserTabReady(ctxWith(undefined, tabs)), false, '没有 sidebarRight 服务 → 不可用')
+  assert.equal(browserTabReady(ctxWith({}, tabs)), false, 'openTab 不是函数 → 不可用')
+  assert.equal(
+    browserTabReady({
+      get: (key) => {
+        if (key === 'sidebarRight') return { openTab }
+        throw new Error('closed-source shape surprise')
+      },
+    }),
+    false,
+    'ctx.get 抛错 → 吞掉返回 false',
+  )
+  assert.equal(browserTabReady(null), false)
+  assert.equal(browserTabReady(undefined), false)
+  assert.equal(browserTabReady({}), false, '没有 get 方法 → 不可用')
+})
+
+test('方案 B：openInBuiltInBrowser 用 DSH 自家的调用形状，缺服务要抛', () => {
+  const { openInBuiltInBrowser } = openBundle().__test
+  const calls = []
+  const ctx = { get: (key) => (key === 'sidebarRight' ? { openTab: (id, options) => calls.push([id, options]) } : undefined) }
+  openInBuiltInBrowser(ctx, 'https://www.example.com/')
+  assert.deepEqual(calls, [['browser', { params: { url: 'https://www.example.com/' } }]])
+
+  assert.throws(() => openInBuiltInBrowser({ get: () => undefined }, 'https://x.test'), /sidebarRight/)
+  assert.throws(() => openInBuiltInBrowser(null, 'https://x.test'), /sidebarRight/)
+})
+
+// ── 方案 B：状态 HUD 与内置浏览器小窗 ────────────────────────────────────────
+
+test('方案 B：小窗偏好默认开，显式关保留（老配置没有该字段 → 开）', () => {
+  const { DEFAULT_SETTINGS, migrateSettings } = openBundle().__test
+  assert.equal(DEFAULT_SETTINGS.browserFloat, true)
+  assert.equal(migrateSettings(null).browserFloat, true)
+  assert.equal(migrateSettings({ browserFloat: false, entries: [] }).browserFloat, false)
+  assert.equal(migrateSettings({ browserFloat: true, entries: [] }).browserFloat, true)
+  assert.equal(migrateSettings({ entries: [] }).browserFloat, true)
+})
+
+test('方案 B：小窗 CSS 只钉内置浏览器的网页标签（:has + 后缀类名，防误伤其他右栏标签）', () => {
+  const { BROWSER_FLOAT_CSS } = openBundle().__test
+  assert.match(BROWSER_FLOAT_CSS, /class\$="_panel"/, '类名 hash 会变，必须后缀匹配')
+  assert.match(BROWSER_FLOAT_CSS, /:has\(iframe\[src\^="http"\]\)/, '用外链 iframe 锁定网页标签')
+  assert.match(BROWSER_FLOAT_CSS, /position: fixed/)
+  assert.match(BROWSER_FLOAT_CSS, /border-radius: 14px/)
+})
+
+test('方案 B：computeHudValue 从实测字段面提时间/结果/问题信号', () => {
+  const { computeHudValue } = openBundle().__test
+  assert.equal(computeHudValue(null), null)
+  assert.equal(computeHudValue(undefined), null)
+
+  const summary = {
+    running: false,
+    title: '测试会话',
+    displayTitle: '测试会话',
+    updatedAt: 123,
+    projectionValues: {
+      sessionStats: { turns: 7, steps: 100 },
+      turnOutline: [
+        { turn: 6, prompt: 'p6', response: '上一轮的结果' },
+        { turn: 7, prompt: 'p7', response: '这一轮  ' + '\n的结果 很长'.repeat(30) },
+      ],
+      userQuestions: { active: [{ q: 1 }], settled: [] },
+      plan: { active: true, pending: false },
     },
   }
+  const hud = computeHudValue(summary)
+  assert.equal(hud.running, false)
+  assert.equal(hud.turns, 7)
+  assert.equal(hud.steps, 100)
+  // computeHudValue 保留原始 response（空格折叠在 HUD 渲染时做，数据层不动原文）
+  assert.match(hud.lastResponse, /^这一轮  \n的结果/, 'response 取最后一轮原文')
+  assert.equal(hud.questions, 1)
+  assert.equal(hud.planActive, true)
+  assert.equal(hud.title, '测试会话')
 
-  bindWebview(el)
-  assert.equal(scripts.length, 1, '挂载即注入一次（dom-ready 可能已错过）')
-  assert.equal(listeners['dom-ready']?.length, 1, '要监听 dom-ready')
-  assert.equal(listeners['did-navigate']?.length, 1, '要监听 did-navigate')
-
-  // 导航到新文档 → 重注入（每个文档的 MutationObserver 都得重新挂）
-  for (const fn of listeners['did-navigate']) fn()
-  assert.equal(scripts.length, 2)
-
-  // React ref 回调可能重复调用 → 幂等
-  bindWebview(el)
-  assert.equal(scripts.length, 2, '重复挂载不该重复注册监听')
-  assert.equal(listeners['dom-ready'].length, 1)
-
-  // ref 卸载时 React 会传 null
-  assert.doesNotThrow(() => bindWebview(null))
+  // 垃圾输入：字段缺失不炸
+  const bare = computeHudValue({ running: true })
+  assert.equal(bare.running, true)
+  assert.equal(bare.turns, null)
+  assert.equal(bare.lastResponse, '')
+  assert.equal(bare.questions, 0)
+  assert.equal(bare.planActive, false)
 })
 
-test('桌面端 webview：executeJavaScript 抛错被吞掉（元素未 attach 的时序问题不能崩渲染）', () => {
-  const { bindWebview } = openBundle().__test
-  const el = {
-    addEventListener() {},
-    executeJavaScript() {
-      throw new Error('not attached yet')
-    },
-  }
-  assert.doesNotThrow(() => bindWebview(el))
+// ── 方案 B：系统通知（Windows toast）──────────────────────────────────────────
+
+test('方案 B：通知事件判定（纯函数：基线不弹、增量弹、完成弹）', () => {
+  const { notificationDelta } = openBundle().__test
+  const snap = (running, questions) => ({ running, questions })
+
+  // 首帧基线：不弹（页面加载不该连环 toast）
+  assert.deepEqual(notificationDelta(null, snap(true, 3)), [])
+
+  // 无变化：不弹
+  assert.deepEqual(notificationDelta(snap(true, 0), snap(true, 0)), [])
+  // 问题数减少（已回答）：不弹
+  assert.deepEqual(notificationDelta(snap(true, 2), snap(true, 1)), [])
+  // 问题数增加：弹
+  assert.deepEqual(
+    notificationDelta(snap(true, 0), snap(true, 2)),
+    [{ type: 'questions', count: 2 }],
+  )
+  // running true→false：完成
+  assert.deepEqual(
+    notificationDelta(snap(true, 0), snap(false, 0)),
+    [{ type: 'done' }],
+  )
+  // 运行中的轮次推进不算完成
+  assert.deepEqual(notificationDelta(snap(true, 0), snap(true, 0)), [])
+  // 一次快照里两类事件都发
+  assert.deepEqual(
+    notificationDelta(snap(true, 0), snap(false, 1)),
+    [{ type: 'questions', count: 1 }, { type: 'done' }],
+  )
+})
+
+test('方案 B：系统通知开关默认开，显式关保留', () => {
+  const { DEFAULT_SETTINGS, migrateSettings } = openBundle().__test
+  assert.equal(DEFAULT_SETTINGS.notifyEnabled, true)
+  assert.equal(migrateSettings(null).notifyEnabled, true)
+  assert.equal(migrateSettings({ notifyEnabled: false, entries: [] }).notifyEnabled, false)
+  assert.equal(migrateSettings({ entries: [] }).notifyEnabled, true, '老配置没有该字段 → 开')
 })

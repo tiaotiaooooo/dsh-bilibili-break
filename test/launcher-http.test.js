@@ -200,7 +200,7 @@ test('HTTP：Origin 与 Host 不一致被 403（带标记时的一致性校验�
 })
 
 test('HTTP：闸门探针（fenceProbe）把原始请求头与判决写进文件', async () => {
-  const probePath = join(tmpdir(), 'dsh-bilibili-break-fence.ndjson')
+  const probePath = join(tmpdir(), 'dsh-moyu-break-fence.ndjson')
   const harness = await startHarness({ ...harnessConfig, fenceProbe: true })
   try {
     await get(harness.base)
@@ -237,10 +237,10 @@ test('HTTP：token 缺失或不对一律 403', async () => {
   try {
     const body = { action: 'open', target: 'https://x.test' }
     assert.equal((await post(harness.base, body, SAME_ORIGIN)).status, 403)
-    assert.equal((await post(harness.base, body, { ...SAME_ORIGIN, 'x-dsh-bilibili-break-token': 'wrong' })).status, 403)
+    assert.equal((await post(harness.base, body, { ...SAME_ORIGIN, 'x-dsh-moyu-break-token': 'wrong' })).status, 403)
 
     const { token } = await (await get(harness.base, SAME_ORIGIN)).json()
-    const withToken = await post(harness.base, body, { ...SAME_ORIGIN, 'x-dsh-bilibili-break-token': token })
+    const withToken = await post(harness.base, body, { ...SAME_ORIGIN, 'x-dsh-moyu-break-token': token })
     // token 对了，但 allowOpen 关着 -> 403（配置门），错误信息应该不同。
     assert.equal(withToken.status, 403)
     assert.match((await withToken.json()).error, /allowOpen/)
@@ -253,7 +253,7 @@ test('HTTP：恶意目标在校验层就被 400 挡下', async () => {
   const harness = await startHarness(harnessConfig)
   try {
     const { token } = await (await get(harness.base, SAME_ORIGIN)).json()
-    const headers = { ...SAME_ORIGIN, 'x-dsh-bilibili-break-token': token }
+    const headers = { ...SAME_ORIGIN, 'x-dsh-moyu-break-token': token }
 
     // scheme 相关的目标在结构校验层就 400，不会走到授权层。
     for (const target of ['file:///C:/Windows/System32/cmd.exe', 'javascript:alert(1)', 'not a url']) {
@@ -278,7 +278,7 @@ test('HTTP：exec 受 allowlist 约束，放行的目标真的会被启动', asy
   const harness = await startHarness(harnessConfig)
   try {
     const { token } = await (await get(harness.base, SAME_ORIGIN)).json()
-    const headers = { ...SAME_ORIGIN, 'x-dsh-bilibili-break-token': token }
+    const headers = { ...SAME_ORIGIN, 'x-dsh-moyu-break-token': token }
 
     // 不在名单里 -> 403（授权门，不是请求格式错）
     const denied = await post(harness.base, { action: 'exec', target: 'definitely-not-allowed.exe' }, headers)
@@ -305,7 +305,7 @@ test('HTTP：trustPanelPickedExec 关掉后，userChosen 拿不到豁免', async
     const response = await post(
       harness.base,
       { action: 'exec', target: 'definitely-not-allowed.exe', userChosen: true },
-      { ...SAME_ORIGIN, 'x-dsh-bilibili-break-token': token },
+      { ...SAME_ORIGIN, 'x-dsh-moyu-break-token': token },
     )
     assert.equal(response.status, 403)
     assert.match((await response.json()).error, /execAllowlist/)
@@ -319,7 +319,7 @@ test('HTTP：userChosen 的路径被记住，之后不带 userChosen 也放行�
   const harness = await startHarness({ ...harnessConfig, execAllowlist: ['nothing-matches.exe'] })
   try {
     const { token } = await (await get(harness.base, SAME_ORIGIN)).json()
-    const headers = { ...SAME_ORIGIN, 'x-dsh-bilibili-break-token': token }
+    const headers = { ...SAME_ORIGIN, 'x-dsh-moyu-break-token': token }
     const target = process.execPath
 
     const first = await post(harness.base, { action: 'exec', target, args: ['-e', 'process.exit(0)'], userChosen: true }, headers)
@@ -363,7 +363,7 @@ test('HTTP：/pick-file 走替身能取回选中路径，取消则返回 null', 
     const harness = await startHarness(harnessConfig)
     try {
       const { token } = await (await get(harness.base, SAME_ORIGIN)).json()
-      const headers = { 'content-type': 'application/json', ...SAME_ORIGIN, 'x-dsh-bilibili-break-token': token }
+      const headers = { 'content-type': 'application/json', ...SAME_ORIGIN, 'x-dsh-moyu-break-token': token }
 
       const picked = await fetch(`${harness.base}${ROUTE_PREFIX}/pick-file`, {
         method: 'POST', headers, body: JSON.stringify({ title: '选个程序' }),
@@ -407,7 +407,7 @@ test('HTTP：exec 默认关闭（allowExec 缺省即 false）', async () => {
     const response = await post(
       harness.base,
       { action: 'exec', target: process.execPath, args: ['-e', 'process.exit(0)'] },
-      { ...SAME_ORIGIN, 'x-dsh-bilibili-break-token': token },
+      { ...SAME_ORIGIN, 'x-dsh-moyu-break-token': token },
     )
     assert.equal(response.status, 403)
     assert.match((await response.json()).error, /allowExec/)
@@ -419,7 +419,7 @@ test('HTTP：exec 默认关闭（allowExec 缺省即 false）', async () => {
 test('HTTP：未知路径不落到插件路由上', async () => {
   const harness = await startHarness(harnessConfig)
   try {
-    assert.equal((await fetch(`${harness.base}/_dsh/bilibili-break/nope`, { headers: SAME_ORIGIN })).status, 404)
+    assert.equal((await fetch(`${harness.base}/_dsh/moyu-break/nope`, { headers: SAME_ORIGIN })).status, 404)
   } finally {
     await harness.close()
   }

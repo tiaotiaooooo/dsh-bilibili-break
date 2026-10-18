@@ -1,7 +1,7 @@
 {
-  "name": "dsh-bilibili-break",
+  "name": "dsh-moyu-break",
   "version": "0.2.0",
-  "description": "DSH 摸鱼插件：agent 忙过 10 秒后在界面里问一句「AI 还在 coding，放松一下吧？」，确定就开一个内嵌 B站 播放器的摸鱼面板。桌面端与网页端通用。",
+  "description": "DSH 摸鱼插件：agent 忙过 10 秒后在界面里问一句「AI 还在 coding，放松一下吧？」，确定就开一个摸鱼面板。桌面端与网页端通用。",
   "license": "MIT",
   "type": "module",
   "main": "index.js",
@@ -28,7 +28,7 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
-    "bilibili",
+    "moyu",
     "break"
   ],
   "dependencies": {

@@ -13,7 +13,7 @@
 # replaces the whole `config` value, so restate every field you want to keep.
 
 - insert:
-    - id: bilibili-break
-      name: dsh-bilibili-break
+    - id: moyu-break
+      name: dsh-moyu-break
       inject:
         - timer

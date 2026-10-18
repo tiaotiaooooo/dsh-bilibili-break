@@ -113,7 +113,7 @@ test('闸门：有标记时 Origin 必须与 Host 一致；不透明源（null�
 
 test('open 类：放行正常的地址与协议', () => {
   for (const target of [
-    'https://www.bilibili.com',
+    'https://www.example.com',
     'http://127.0.0.1:8080/x?y=1&z=2',
     'steam://run/730',
     'spotify:track:abc',

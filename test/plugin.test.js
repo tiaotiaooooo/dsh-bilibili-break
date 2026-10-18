@@ -151,10 +151,10 @@ test('decideOpen: 达到单会话上限后不开；0 表示不限', () => {
 // --- browserCommand ----------------------------------------------------------
 
 test('browserCommand: 各平台用系统默认处理程序，且不经过 shell', () => {
-  const win = browserCommand('https://www.bilibili.com/video/BV1xx?a=1&b=2', 'win32')
+  const win = browserCommand('https://www.example.com/video/BV1xx?a=1&b=2', 'win32')
   assert.equal(win.command, 'rundll32.exe')
   // URL 必须是完整的单个参数：查询串里的 & 不能被二次解析。
-  assert.deepEqual(win.args, ['url.dll,FileProtocolHandler', 'https://www.bilibili.com/video/BV1xx?a=1&b=2'])
+  assert.deepEqual(win.args, ['url.dll,FileProtocolHandler', 'https://www.example.com/video/BV1xx?a=1&b=2'])
 
   assert.deepEqual(browserCommand('https://x.test', 'darwin'), {
     command: 'open',
@@ -190,7 +190,7 @@ test('apply: 一轮忙过延迟后触发一次打开', async () => {
   await ctx.settle(120)
   const dryRuns = ctx.logs.filter((line) => line.args.join(' ').includes('[干跑]'))
   assert.equal(dryRuns.length, 1)
-  assert.match(dryRuns[0].args.join(' '), /bilibili\.com/)
+  assert.match(dryRuns[0].args.join(' '), /example\.com/)
 })
 
 test('apply: 全局冷却把第二个会话挡在外面', async () => {
@@ -265,9 +265,9 @@ test('apply: 有 webServer 时注册 hello / pick-file / launch 三条路由', a
   assert.deepEqual(
     ctx.routes.map((route) => [route.kind, route.path]).sort((a, b) => (a[1] < b[1] ? -1 : 1)),
     [
-      ['exact', '/_dsh/bilibili-break/hello'],
-      ['exact', '/_dsh/bilibili-break/pick-file'],
-      ['exact', '/_dsh/bilibili-break/launch'],
+      ['exact', '/_dsh/moyu-break/hello'],
+      ['exact', '/_dsh/moyu-break/pick-file'],
+      ['exact', '/_dsh/moyu-break/launch'],
     ].sort((a, b) => (a[1] < b[1] ? -1 : 1)),
   )
   for (const route of ctx.routes) assert.equal(typeof route.handler, 'function')

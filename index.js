@@ -1,5 +1,5 @@
 /**
- * dsh-bilibili-break —— 摸鱼插件（host 半边）。
+ * dsh-moyu-break —— 摸鱼插件（host 半边）。
  *
  * 两个职责：
  *
@@ -23,7 +23,7 @@ import z from '@deepseek-ai/schemastery'
 import { pickFile, isFilePickerSupported, DEFAULT_PICK_TITLE } from './lib/picker.js'
 
 /** 插件行名，与 package.json 的 name 一致，方便日志定位。 */
-export const name = 'bilibili-break'
+export const name = 'moyu-break'
 
 /**
  * 依赖 cordis 的 timer 服务（由 @deepseek-ai/dsh-base 挂载），拿 ctx.timeout。
@@ -36,7 +36,7 @@ export const name = 'bilibili-break'
 export const inject = ['timer']
 
 /** 启动器路由前缀。`/_dsh/` 是插件自有路由的约定前缀。 */
-export const ROUTE_PREFIX = '/_dsh/bilibili-break'
+export const ROUTE_PREFIX = '/_dsh/moyu-break'
 
 /** 请求体上限：启动请求只该带一个地址和几个参数。 */
 const MAX_BODY_BYTES = 16384
@@ -47,7 +47,7 @@ const DENIED_OPEN_SCHEMES = new Set(['file', 'javascript', 'data', 'vbscript', '
 /** 配置缺省值；Config schema 未提供时也要能正常工作。 */
 export const DEFAULT_CONFIG = {
   enabled: true,
-  url: 'https://www.bilibili.com',
+  url: 'https://www.example.com',
   delaySeconds: 10,
   cooldownSeconds: 600,
   maxOpensPerSession: 3,
@@ -65,7 +65,7 @@ export const DEFAULT_CONFIG = {
   trustPanelPickedExec: true,
   /**
    * 闸门探针：把每次 `/hello` / `/launch` / `/pick-file` 的原始请求头和闸门判决
-   * 追加写进 `$TMPDIR/dsh-bilibili-break-fence.ndjson`。
+   * 追加写进 `$TMPDIR/dsh-moyu-break-fence.ndjson`。
    *
    * 存在的理由就是那次桌面端 403 事故：客户端只报得上 `HTTP 403`，而服务端到底
    * 收到了什么头、被哪一条规则拒的，事后完全无从得知。有这个开关，下次诊断只需要
@@ -548,7 +548,7 @@ export async function apply(ctx, rawConfig = {}) {
   let lastOpenedAt = 0
 
   ctx.logger?.info(
-    'bilibili-break: 已挂载（延迟 %ds / 冷却 %ds / 单会话上限 %s）',
+    'moyu-break: 已挂载（延迟 %ds / 冷却 %ds / 单会话上限 %s）',
     config.delaySeconds,
     config.cooldownSeconds,
     config.maxOpensPerSession === 0 ? '不限' : config.maxOpensPerSession,
@@ -571,7 +571,7 @@ export async function apply(ctx, rawConfig = {}) {
     })
 
     if (!verdict.open) {
-      ctx.logger?.info('bilibili-break: 第 %d 轮不打开（%s）', turn, verdict.reason)
+      ctx.logger?.info('moyu-break: 第 %d 轮不打开（%s）', turn, verdict.reason)
       return
     }
 
@@ -579,15 +579,15 @@ export async function apply(ctx, rawConfig = {}) {
     opensBySession.set(sessionId, opens + 1)
 
     if (!config.openInBrowser) {
-      ctx.logger?.info('bilibili-break: [干跑] 本应打开 %s（第 %d 轮）', config.url, turn)
+      ctx.logger?.info('moyu-break: [干跑] 本应打开 %s（第 %d 轮）', config.url, turn)
       return
     }
 
     const opened = launchBrowser(config.url, (message) =>
-      ctx.logger?.warn('bilibili-break: 打开浏览器失败：%s', message),
+      ctx.logger?.warn('moyu-break: 打开浏览器失败：%s', message),
     )
     if (opened) {
-      ctx.logger?.info('bilibili-break: 第 %d 轮已忙过 %ds，打开 %s', turn, config.delaySeconds, config.url)
+      ctx.logger?.info('moyu-break: 第 %d 轮已忙过 %ds，打开 %s', turn, config.delaySeconds, config.url)
     }
   }
 
@@ -642,7 +642,7 @@ export async function apply(ctx, rawConfig = {}) {
   // 客户端只报得上「HTTP 403」，服务端收到了什么头、被哪条规则拒的，事后无从得知
   // ——桌面端那次握手事故就是这么查了半天。开关打开后，每次请求的原始头和判决都
   // 追加进一个 ndjson 文件，下次诊断只需要点一次按钮。
-  const PROBE_PATH = join(tmpdir(), 'dsh-bilibili-break-fence.ndjson')
+  const PROBE_PATH = join(tmpdir(), 'dsh-moyu-break-fence.ndjson')
 
   /** 从请求里抽诊断要用的头（只记相关字段，不落请求体）。 */
   const probeHeaders = (req) => ({
@@ -668,9 +668,9 @@ export async function apply(ctx, rawConfig = {}) {
     // 每次启动重新开始，避免历史记录误导诊断。
     try {
       writeFileSync(PROBE_PATH, '', 'utf8')
-      ctx.logger?.info('bilibili-break: 闸门探针已开启，记录在 %s', PROBE_PATH)
+      ctx.logger?.info('moyu-break: 闸门探针已开启，记录在 %s', PROBE_PATH)
     } catch {
-      ctx.logger?.warn('bilibili-break: 闸门探针无法初始化（%s）', PROBE_PATH)
+      ctx.logger?.warn('moyu-break: 闸门探针无法初始化（%s）', PROBE_PATH)
     }
   }
 
@@ -690,7 +690,7 @@ export async function apply(ctx, rawConfig = {}) {
     if (!fence.ok) {
       // 405 必须带 Allow（RFC 9110）。
       if (fence.status === 405) res.setHeader('Allow', method)
-      ctx.logger?.warn('bilibili-break: %s 请求被闸门拒绝（%d %s）', route, fence.status, fence.error)
+      ctx.logger?.warn('moyu-break: %s 请求被闸门拒绝（%d %s）', route, fence.status, fence.error)
       probe(route, req, `fence:${fence.status}:${fence.error}`)
       sendJson(res, fence.status, { ok: false, error: fence.error })
       return false
@@ -699,9 +699,9 @@ export async function apply(ctx, rawConfig = {}) {
       probe(route, req, 'ok')
       return true
     }
-    const token = String(req.headers?.['x-dsh-bilibili-break-token'] ?? '')
+    const token = String(req.headers?.['x-dsh-moyu-break-token'] ?? '')
     if (token === '' || token !== launchToken) {
-      ctx.logger?.warn('bilibili-break: %s 请求 token 无效', route)
+      ctx.logger?.warn('moyu-break: %s 请求 token 无效', route)
       probe(route, req, 'token-403')
       sendJson(res, 403, { ok: false, error: 'invalid launcher token' })
       return false
@@ -719,7 +719,7 @@ export async function apply(ctx, rawConfig = {}) {
     pickerSupport = { ok: false, reason: String(error?.message ?? error) }
   }
   if (!pickerSupport.ok) {
-    ctx.logger?.info('bilibili-break: 原生文件选择框不可用（%s），面板会退回手填路径', pickerSupport.reason)
+    ctx.logger?.info('moyu-break: 原生文件选择框不可用（%s），面板会退回手填路径', pickerSupport.reason)
   }
 
   ctx.inject(['webServer'], (webCtx) => {
@@ -742,7 +742,7 @@ export async function apply(ctx, rawConfig = {}) {
             })
           },
         }),
-      'bilibili-break: launcher handshake',
+      'moyu-break: launcher handshake',
     )
 
     // 原生「选择文件」对话框。桌面端能弹；网页端浏览器到不了宿主屏幕，此刻
@@ -782,12 +782,12 @@ export async function apply(ctx, rawConfig = {}) {
               sendJson(res, 200, { ok: true, path })
             } catch (error) {
               if (abort.signal.aborted) return
-              ctx.logger?.warn('bilibili-break: 文件选择框失败：%s', String(error?.message ?? error))
+              ctx.logger?.warn('moyu-break: 文件选择框失败：%s', String(error?.message ?? error))
               sendJson(res, 500, { ok: false, error: String(error?.message ?? error) })
             }
           },
         }),
-      'bilibili-break: native file picker',
+      'moyu-break: native file picker',
     )
 
     webCtx.effect(
@@ -817,13 +817,13 @@ export async function apply(ctx, rawConfig = {}) {
                 return
               }
               const started = launchBrowser(parsed.target, (message) =>
-                ctx.logger?.warn('bilibili-break: 系统打开失败：%s', message),
+                ctx.logger?.warn('moyu-break: 系统打开失败：%s', message),
               )
               if (!started) {
                 sendJson(res, 500, { ok: false, error: 'could not hand the target to the OS' })
                 return
               }
-              ctx.logger?.info('bilibili-break: 交给系统打开 %s', parsed.target)
+              ctx.logger?.info('moyu-break: 交给系统打开 %s', parsed.target)
               sendJson(res, 200, { ok: true })
               return
             }
@@ -848,7 +848,7 @@ export async function apply(ctx, rawConfig = {}) {
               // 记一条 info：运行时信任集合是放宽了口径的那部分，出问题时这里能看出
               // 到底是哪次操作把哪条路径放进来的。
               ctx.logger?.info(
-                'bilibili-break: 记住面板选定的程序 %s（本次共 %d 条）',
+                'moyu-break: 记住面板选定的程序 %s（本次共 %d 条）',
                 parsed.target,
                 trusted.size,
               )
@@ -863,17 +863,17 @@ export async function apply(ctx, rawConfig = {}) {
                 shell: false,
               })
               child.on('error', (error) =>
-                ctx.logger?.warn('bilibili-break: 启动程序失败：%s', String(error?.message ?? error)),
+                ctx.logger?.warn('moyu-break: 启动程序失败：%s', String(error?.message ?? error)),
               )
               child.unref()
-              ctx.logger?.info('bilibili-break: 已启动 %s（%d 个参数）', parsed.target, parsed.args.length)
+              ctx.logger?.info('moyu-break: 已启动 %s（%d 个参数）', parsed.target, parsed.args.length)
               sendJson(res, 200, { ok: true })
             } catch (error) {
               sendJson(res, 500, { ok: false, error: String(error?.message ?? error) })
             }
           },
         }),
-      'bilibili-break: launcher route',
+      'moyu-break: launcher route',
     )
   })
 }
